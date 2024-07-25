@@ -7,7 +7,7 @@
 *   Example licensed under an unmodified zlib/libpng license, which is an OSI-certified,
 *   BSD-like license that allows static linking with closed source software
 *
-*   Copyright (c) 2015-2024 Ramon Santamaria (@raysan5)
+*   Copyright (c) 2015-2023 Ramon Santamaria (@raysan5)
 *
 ********************************************************************************************/
 
@@ -47,8 +47,6 @@ int main(void)
 
     UnloadImage(image);     // Unload cubesmap image from RAM, already uploaded to VRAM
 
-    bool pause = false;     // Pause camera orbital rotation (and zoom)
-
     SetTargetFPS(60);                   // Set our game to run at 60 frames-per-second
     //--------------------------------------------------------------------------------------
 
@@ -57,9 +55,7 @@ int main(void)
     {
         // Update
         //----------------------------------------------------------------------------------
-        if (IsKeyPressed(KEY_P)) pause = !pause;
-
-        if (!pause) UpdateCamera(&camera, CAMERA_ORBITAL);
+        UpdateCamera(&camera, CAMERA_ORBITAL);
         //----------------------------------------------------------------------------------
 
         // Draw

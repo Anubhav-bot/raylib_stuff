@@ -24,6 +24,8 @@
 //    distribution.
 //
 //========================================================================
+// Please use C89 style variable declarations in this file because VS 2010
+//========================================================================
 
 #include "internal.h"
 #include "mappings.h"
@@ -460,11 +462,10 @@ void _glfwInputJoystickHat(_GLFWjoystick* js, int hat, char value)
     assert(hat >= 0);
     assert(hat < js->hatCount);
 
-    // Valid hat values only use the least significant nibble
+    // Valid hat values only use the least significant nibble and have at most two bits
+    // set, which can be considered adjacent plus an arbitrary rotation within the nibble
     assert((value & 0xf0) == 0);
-    // Valid hat values do not have both bits of an axis set
-    assert((value & GLFW_HAT_LEFT) == 0 || (value & GLFW_HAT_RIGHT) == 0);
-    assert((value & GLFW_HAT_UP) == 0 || (value & GLFW_HAT_DOWN) == 0);
+    assert((value & ((value << 2) | (value >> 2))) == 0);
 
     base = js->buttonCount + hat * 4;
 
@@ -700,12 +701,6 @@ GLFWAPI const char* glfwGetKeyName(int key, int scancode)
 
     if (key != GLFW_KEY_UNKNOWN)
     {
-        if (key < GLFW_KEY_SPACE || key > GLFW_KEY_LAST)
-        {
-            _glfwInputError(GLFW_INVALID_ENUM, "Invalid key %i", key);
-            return NULL;
-        }
-
         if (key != GLFW_KEY_KP_EQUAL &&
             (key < GLFW_KEY_KP_0 || key > GLFW_KEY_KP_ADD) &&
             (key < GLFW_KEY_APOSTROPHE || key > GLFW_KEY_WORLD_2))
@@ -721,12 +716,12 @@ GLFWAPI const char* glfwGetKeyName(int key, int scancode)
 
 GLFWAPI int glfwGetKeyScancode(int key)
 {
-    _GLFW_REQUIRE_INIT_OR_RETURN(0);
+    _GLFW_REQUIRE_INIT_OR_RETURN(-1);
 
     if (key < GLFW_KEY_SPACE || key > GLFW_KEY_LAST)
     {
         _glfwInputError(GLFW_INVALID_ENUM, "Invalid key %i", key);
-        return -1;
+        return GLFW_RELEASE;
     }
 
     return _glfw.platform.getKeyScancode(key);
@@ -1438,7 +1433,7 @@ GLFWAPI int glfwGetGamepadState(int jid, GLFWgamepadstate* state)
         if (e->type == _GLFW_JOYSTICK_AXIS)
         {
             const float value = js->axes[e->index] * e->axisScale + e->axisOffset;
-            state->axes[i] = fminf(fmaxf(value, -1.f), 1.f);
+            state->axes[i] = _glfw_fminf(_glfw_fmaxf(value, -1.f), 1.f);
         }
         else if (e->type == _GLFW_JOYSTICK_HATBIT)
         {

@@ -1,16 +1,14 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-// This has been tested to work with zig 0.12.0
-fn add_module(comptime module: []const u8, b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step {
-    if (target.result.os.tag == .emscripten) {
+// This has been tested to work with zig 0.11.0 (67709b6, Aug 4 2023)
+fn add_module(comptime module: []const u8, b: *std.Build, target: std.zig.CrossTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step {
+    if (target.getOsTag() == .emscripten) {
         @panic("Emscripten building via Zig unsupported");
     }
 
     const all = b.step(module, "All " ++ module ++ " examples");
-    var dir = try std.fs.cwd().openDir(module, .{ .iterate = true });
-    defer if (comptime builtin.zig_version.minor >= 12) dir.close();
-
+    const dir = try std.fs.cwd().openIterableDir(module, .{});
     var iter = dir.iterate();
     while (try iter.next()) |entry| {
         if (entry.kind != .file) continue;
@@ -19,32 +17,33 @@ fn add_module(comptime module: []const u8, b: *std.Build, target: std.Build.Reso
         const path = try std.fs.path.join(b.allocator, &.{ module, entry.name });
 
         // zig's mingw headers do not include pthread.h
-        if (std.mem.eql(u8, "core_loading_thread", name) and target.result.os.tag == .windows) continue;
+        if (std.mem.eql(u8, "core_loading_thread", name) and target.getOsTag() == .windows) continue;
 
         const exe = b.addExecutable(.{
             .name = name,
             .target = target,
             .optimize = optimize,
         });
-        exe.addCSourceFile(.{ .file = b.path(path), .flags = &.{} });
+        exe.addCSourceFile(.{ .file = .{ .path = path }, .flags = &.{} });
         exe.linkLibC();
-        exe.addObjectFile(switch (target.result.os.tag) {
-            .windows => b.path("../zig-out/lib/raylib.lib"),
-            .linux => b.path("../zig-out/lib/libraylib.a"),
-            .macos => b.path("../zig-out/lib/libraylib.a"),
-            .emscripten => b.path("../zig-out/lib/libraylib.a"),
+        exe.addObjectFile(switch (target.getOsTag()) {
+            .windows => .{ .path = "../zig-out/lib/raylib.lib" },
+            .linux => .{ .path = "../zig-out/lib/libraylib.a" },
+            .macos => .{ .path = "../zig-out/lib/libraylib.a" },
+            .emscripten => .{ .path = "../zig-out/lib/libraylib.a" },
             else => @panic("Unsupported OS"),
         });
 
-        exe.addIncludePath(b.path("../src"));
-        exe.addIncludePath(b.path("../src/external"));
-        exe.addIncludePath(b.path("../src/external/glfw/include"));
+        exe.addIncludePath(.{ .path = "../src" });
+        exe.addIncludePath(.{ .path = "../src/external" });
+        exe.addIncludePath(.{ .path = "../src/external/glfw/include" });
 
-        switch (target.result.os.tag) {
+        switch (target.getOsTag()) {
             .windows => {
                 exe.linkSystemLibrary("winmm");
                 exe.linkSystemLibrary("gdi32");
                 exe.linkSystemLibrary("opengl32");
+                exe.addIncludePath(.{ .path = "external/glfw/deps/mingw" });
 
                 exe.defineCMacro("PLATFORM_DESKTOP", null);
             },
@@ -75,7 +74,6 @@ fn add_module(comptime module: []const u8, b: *std.Build, target: std.Build.Reso
         const install_cmd = b.addInstallArtifact(exe, .{});
 
         const run_cmd = b.addRunArtifact(exe);
-        run_cmd.cwd = b.path(module);
         run_cmd.step.dependOn(&install_cmd.step);
 
         const run_step = b.step(name, name);

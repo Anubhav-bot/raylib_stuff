@@ -1,9 +1,8 @@
 //========================================================================
-// GLFW 3.4 Win32 (modified for raylib) - www.glfw.org; www.raylib.com
+// GLFW 3.4 Win32 - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2002-2006 Marcus Geelnard
 // Copyright (c) 2006-2019 Camilla Löwy <elmindreda@glfw.org>
-// Copyright (c) 2024 M374LX <wilsalx@gmail.com>
 //
 // This software is provided 'as-is', without any express or implied
 // warranty. In no event will the authors be held liable for any damages
@@ -25,10 +24,10 @@
 //    distribution.
 //
 //========================================================================
+// Please use C89 style variable declarations in this file because VS 2010
+//========================================================================
 
 #include "internal.h"
-
-#if defined(_GLFW_WIN32)
 
 #include <limits.h>
 #include <stdlib.h>
@@ -185,38 +184,53 @@ static HICON createIcon(const GLFWimage* image, int xhot, int yhot, GLFWbool ico
     return handle;
 }
 
+// Translate content area size to full window size according to styles and DPI
+//
+static void getFullWindowSize(DWORD style, DWORD exStyle,
+                              int contentWidth, int contentHeight,
+                              int* fullWidth, int* fullHeight,
+                              UINT dpi)
+{
+    RECT rect = { 0, 0, contentWidth, contentHeight };
+
+    if (_glfwIsWindows10Version1607OrGreaterWin32())
+        AdjustWindowRectExForDpi(&rect, style, FALSE, exStyle, dpi);
+    else
+        AdjustWindowRectEx(&rect, style, FALSE, exStyle);
+
+    *fullWidth = rect.right - rect.left;
+    *fullHeight = rect.bottom - rect.top;
+}
+
 // Enforce the content area aspect ratio based on which edge is being dragged
 //
 static void applyAspectRatio(_GLFWwindow* window, int edge, RECT* area)
 {
-    RECT frame = {0};
+    int xoff, yoff;
+    UINT dpi = USER_DEFAULT_SCREEN_DPI;
     const float ratio = (float) window->numer / (float) window->denom;
-    const DWORD style = getWindowStyle(window);
-    const DWORD exStyle = getWindowExStyle(window);
 
     if (_glfwIsWindows10Version1607OrGreaterWin32())
-    {
-        AdjustWindowRectExForDpi(&frame, style, FALSE, exStyle,
-                                 GetDpiForWindow(window->win32.handle));
-    }
-    else
-        AdjustWindowRectEx(&frame, style, FALSE, exStyle);
+        dpi = GetDpiForWindow(window->win32.handle);
+
+    getFullWindowSize(getWindowStyle(window), getWindowExStyle(window),
+                      0, 0, &xoff, &yoff, dpi);
 
     if (edge == WMSZ_LEFT  || edge == WMSZ_BOTTOMLEFT ||
         edge == WMSZ_RIGHT || edge == WMSZ_BOTTOMRIGHT)
     {
-        area->bottom = area->top + (frame.bottom - frame.top) +
-            (int) (((area->right - area->left) - (frame.right - frame.left)) / ratio);
+        area->bottom = area->top + yoff +
+            (int) ((area->right - area->left - xoff) / ratio);
     }
     else if (edge == WMSZ_TOPLEFT || edge == WMSZ_TOPRIGHT)
     {
-        area->top = area->bottom - (frame.bottom - frame.top) -
-            (int) (((area->right - area->left) - (frame.right - frame.left)) / ratio);
+        area->top = area->bottom - yoff -
+            (int) ((area->right - area->left - xoff) / ratio);
     }
     else if (edge == WMSZ_TOP || edge == WMSZ_BOTTOM)
     {
-        area->right = area->left + (frame.right - frame.left) +
-            (int) (((area->bottom - area->top) - (frame.bottom - frame.top)) * ratio);
+        area->right = area->left + xoff +
+            (int) ((area->bottom - area->top - yoff) * ratio);
     }
 }
 
@@ -233,12 +247,7 @@ static void updateCursorImage(_GLFWwindow* window)
             SetCursor(LoadCursorW(NULL, IDC_ARROW));
     }
     else
-    {
-        // NOTE: Via Remote Desktop, setting the cursor to NULL does not hide it.
-        // HACK: When running locally, it is set to NULL, but when connected via Remote
-        //       Desktop, this is a transparent cursor.
-        SetCursor(_glfw.win32.blankCursor);
-    }
+        SetCursor(NULL);
 }
 
 // Sets the cursor clip rect to the window content area
@@ -440,7 +449,7 @@ static void fitToMonitor(_GLFWwindow* window)
 
 // Make the specified window and its video mode active on its monitor
 //
-static void acquireMonitorWin32(_GLFWwindow* window)
+static void acquireMonitor(_GLFWwindow* window)
 {
     if (!_glfw.win32.acquiredMonitorCount)
     {
@@ -461,7 +470,7 @@ static void acquireMonitorWin32(_GLFWwindow* window)
 
 // Remove the window and restore the original video mode
 //
-static void releaseMonitorWin32(_GLFWwindow* window)
+static void releaseMonitor(_GLFWwindow* window)
 {
     if (window->monitor->window != window)
         return;
@@ -471,7 +480,7 @@ static void releaseMonitorWin32(_GLFWwindow* window)
     {
         SetThreadExecutionState(ES_CONTINUOUS);
 
-        // HACK: Restore mouse trail length saved in acquireMonitorWin32
+        // HACK: Restore mouse trail length saved in acquireMonitor
         SystemParametersInfoW(SPI_SETMOUSETRAILS, _glfw.win32.mouseTrailSize, 0, 0);
     }
 
@@ -930,28 +939,8 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
             data = _glfw.win32.rawInput;
             if (data->data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE)
             {
-                POINT pos = {0};
-                int width, height;
-
-                if (data->data.mouse.usFlags & MOUSE_VIRTUAL_DESKTOP)
-                {
-                    pos.x += GetSystemMetrics(SM_XVIRTUALSCREEN);
-                    pos.y += GetSystemMetrics(SM_YVIRTUALSCREEN);
-                    width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-                    height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-                }
-                else
-                {
-                    width = GetSystemMetrics(SM_CXSCREEN);
-                    height = GetSystemMetrics(SM_CYSCREEN);
-                }
-
-                pos.x += (int) ((data->data.mouse.lLastX / 65535.f) * width);
-                pos.y += (int) ((data->data.mouse.lLastY / 65535.f) * height);
-                ScreenToClient(window->win32.handle, &pos);
-
-                dx = pos.x - window->win32.lastCursorPosX;
-                dy = pos.y - window->win32.lastCursorPosY;
+                dx = data->data.mouse.lLastX - window->win32.lastCursorPosX;
+                dy = data->data.mouse.lLastY - window->win32.lastCursorPosY;
             }
             else
             {
@@ -1051,10 +1040,10 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
             if (window->monitor && window->win32.iconified != iconified)
             {
                 if (iconified)
-                    releaseMonitorWin32(window);
+                    releaseMonitor(window);
                 else
                 {
-                    acquireMonitorWin32(window);
+                    acquireMonitor(window);
                     fitToMonitor(window);
                 }
             }
@@ -1091,34 +1080,31 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 
         case WM_GETMINMAXINFO:
         {
-            RECT frame = {0};
+            int xoff, yoff;
+            UINT dpi = USER_DEFAULT_SCREEN_DPI;
             MINMAXINFO* mmi = (MINMAXINFO*) lParam;
-            const DWORD style = getWindowStyle(window);
-            const DWORD exStyle = getWindowExStyle(window);
 
             if (window->monitor)
                 break;
 
             if (_glfwIsWindows10Version1607OrGreaterWin32())
-            {
-                AdjustWindowRectExForDpi(&frame, style, FALSE, exStyle,
-                                         GetDpiForWindow(window->win32.handle));
-            }
-            else
-                AdjustWindowRectEx(&frame, style, FALSE, exStyle);
+                dpi = GetDpiForWindow(window->win32.handle);
+
+            getFullWindowSize(getWindowStyle(window), getWindowExStyle(window),
+                              0, 0, &xoff, &yoff, dpi);
 
             if (window->minwidth != GLFW_DONT_CARE &&
                 window->minheight != GLFW_DONT_CARE)
             {
-                mmi->ptMinTrackSize.x = window->minwidth + frame.right - frame.left;
-                mmi->ptMinTrackSize.y = window->minheight + frame.bottom - frame.top;
+                mmi->ptMinTrackSize.x = window->minwidth + xoff;
+                mmi->ptMinTrackSize.y = window->minheight + yoff;
             }
 
             if (window->maxwidth != GLFW_DONT_CARE &&
                 window->maxheight != GLFW_DONT_CARE)
             {
-                mmi->ptMaxTrackSize.x = window->maxwidth + frame.right - frame.left;
-                mmi->ptMaxTrackSize.y = window->maxheight + frame.bottom - frame.top;
+                mmi->ptMaxTrackSize.x = window->maxwidth + xoff;
+                mmi->ptMaxTrackSize.y = window->maxheight + yoff;
             }
 
             if (!window->decorated)
@@ -1277,7 +1263,7 @@ static int createNativeWindow(_GLFWwindow* window,
                               const _GLFWwndconfig* wndconfig,
                               const _GLFWfbconfig* fbconfig)
 {
-    int frameX, frameY, frameWidth, frameHeight;
+    int xpos, ypos, fullWidth, fullHeight;
     WCHAR* wideTitle;
     DWORD style = getWindowStyle(window);
     DWORD exStyle = getWindowExStyle(window);
@@ -1315,34 +1301,6 @@ static int createNativeWindow(_GLFWwindow* window,
         }
     }
 
-    if (GetSystemMetrics(SM_REMOTESESSION))
-    {
-        // NOTE: On Remote Desktop, setting the cursor to NULL does not hide it
-        // HACK: Create a transparent cursor and always set that instead of NULL
-        //       When not on Remote Desktop, this handle is NULL and normal hiding is used
-        if (!_glfw.win32.blankCursor)
-        {
-            const int cursorWidth = GetSystemMetrics(SM_CXCURSOR);
-            const int cursorHeight = GetSystemMetrics(SM_CYCURSOR);
-
-            unsigned char* cursorPixels = _glfw_calloc(cursorWidth * cursorHeight, 4);
-            if (!cursorPixels)
-                return GLFW_FALSE;
-
-            // NOTE: Windows checks whether the image is fully transparent and if so
-            //       just ignores the alpha channel and makes the whole cursor opaque
-            // HACK: Make one pixel slightly less transparent
-            cursorPixels[3] = 1;
-
-            const GLFWimage cursorImage = { cursorWidth, cursorHeight, cursorPixels };
-            _glfw.win32.blankCursor = createIcon(&cursorImage, 0, 0, FALSE);
-            _glfw_free(cursorPixels);
-
-            if (!_glfw.win32.blankCursor)
-                return GLFW_FALSE;
-        }
-    }
-
     if (window->monitor)
     {
         MONITORINFO mi = { sizeof(mi) };
@@ -1351,10 +1309,10 @@ static int createNativeWindow(_GLFWwindow* window,
         // NOTE: This window placement is temporary and approximate, as the
         //       correct position and size cannot be known until the monitor
         //       video mode has been picked in _glfwSetVideoModeWin32
-        frameX = mi.rcMonitor.left;
-        frameY = mi.rcMonitor.top;
-        frameWidth  = mi.rcMonitor.right - mi.rcMonitor.left;
-        frameHeight = mi.rcMonitor.bottom - mi.rcMonitor.top;
+        xpos = mi.rcMonitor.left;
+        ypos = mi.rcMonitor.top;
+        fullWidth  = mi.rcMonitor.right - mi.rcMonitor.left;
+        fullHeight = mi.rcMonitor.bottom - mi.rcMonitor.top;
     }
     else
     {
@@ -1368,17 +1326,17 @@ static int createNativeWindow(_GLFWwindow* window,
 
         if (wndconfig->xpos == GLFW_ANY_POSITION && wndconfig->ypos == GLFW_ANY_POSITION)
         {
-            frameX = CW_USEDEFAULT;
-            frameY = CW_USEDEFAULT;
+            xpos = CW_USEDEFAULT;
+            ypos = CW_USEDEFAULT;
         }
         else
         {
-            frameX = wndconfig->xpos + rect.left;
-            frameY = wndconfig->ypos + rect.top;
+            xpos = wndconfig->xpos + rect.left;
+            ypos = wndconfig->ypos + rect.top;
         }
 
-        frameWidth  = rect.right - rect.left;
-        frameHeight = rect.bottom - rect.top;
+        fullWidth = rect.right - rect.left;
+        fullHeight = rect.bottom - rect.top;
     }
 
     wideTitle = _glfwCreateWideStringFromUTF8Win32(wndconfig->title);
@@ -1389,8 +1347,8 @@ static int createNativeWindow(_GLFWwindow* window,
                                            MAKEINTATOM(_glfw.win32.mainWindowClass),
                                            wideTitle,
                                            style,
-                                           frameX, frameY,
-                                           frameWidth, frameHeight,
+                                           xpos, ypos,
+                                           fullWidth, fullHeight,
                                            NULL, // No parent window
                                            NULL, // No window menu
                                            _glfw.win32.instance,
@@ -1419,7 +1377,6 @@ static int createNativeWindow(_GLFWwindow* window,
 
     window->win32.scaleToMonitor = wndconfig->scaleToMonitor;
     window->win32.keymenu = wndconfig->win32.keymenu;
-    window->win32.showDefault = wndconfig->win32.showDefault;
 
     if (!window->monitor)
     {
@@ -1535,7 +1492,7 @@ GLFWbool _glfwCreateWindowWin32(_GLFWwindow* window,
     {
         _glfwShowWindowWin32(window);
         _glfwFocusWindowWin32(window);
-        acquireMonitorWin32(window);
+        acquireMonitor(window);
         fitToMonitor(window);
 
         if (wndconfig->centerCursor)
@@ -1557,7 +1514,7 @@ GLFWbool _glfwCreateWindowWin32(_GLFWwindow* window,
 void _glfwDestroyWindowWin32(_GLFWwindow* window)
 {
     if (window->monitor)
-        releaseMonitorWin32(window);
+        releaseMonitor(window);
 
     if (window->context.destroy)
         window->context.destroy(window);
@@ -1678,7 +1635,7 @@ void _glfwSetWindowSizeWin32(_GLFWwindow* window, int width, int height)
     {
         if (window->monitor->window == window)
         {
-            acquireMonitorWin32(window);
+            acquireMonitor(window);
             fitToMonitor(window);
         }
     }
@@ -1802,23 +1759,7 @@ void _glfwMaximizeWindowWin32(_GLFWwindow* window)
 
 void _glfwShowWindowWin32(_GLFWwindow* window)
 {
-    int showCommand = SW_SHOWNA;
-
-    if (window->win32.showDefault)
-    {
-        // NOTE: GLFW windows currently do not seem to match the Windows 10 definition of
-        //       a main window, so even SW_SHOWDEFAULT does nothing
-        //       This definition is undocumented and can change (source: Raymond Chen)
-        // HACK: Apply the STARTUPINFO show command manually if available
-        STARTUPINFOW si = { sizeof(si) };
-        GetStartupInfoW(&si);
-        if (si.dwFlags & STARTF_USESHOWWINDOW)
-            showCommand = si.wShowWindow;
-
-        window->win32.showDefault = GLFW_FALSE;
-    }
-
-    ShowWindow(window->win32.handle, showCommand);
+    ShowWindow(window->win32.handle, SW_SHOWNA);
 }
 
 void _glfwHideWindowWin32(_GLFWwindow* window)
@@ -1850,7 +1791,7 @@ void _glfwSetWindowMonitorWin32(_GLFWwindow* window,
         {
             if (monitor->window == window)
             {
-                acquireMonitorWin32(window);
+                acquireMonitor(window);
                 fitToMonitor(window);
             }
         }
@@ -1880,7 +1821,7 @@ void _glfwSetWindowMonitorWin32(_GLFWwindow* window,
     }
 
     if (window->monitor)
-        releaseMonitorWin32(window);
+        releaseMonitor(window);
 
     _glfwInputWindowMonitor(window, monitor);
 
@@ -1898,7 +1839,7 @@ void _glfwSetWindowMonitorWin32(_GLFWwindow* window,
             flags |= SWP_FRAMECHANGED;
         }
 
-        acquireMonitorWin32(window);
+        acquireMonitor(window);
 
         GetMonitorInfoW(window->monitor->win32.handle, &mi);
         SetWindowPos(window->win32.handle, HWND_TOPMOST,
@@ -2173,7 +2114,6 @@ void _glfwPollEventsWin32(void)
 
         // NOTE: Re-center the cursor only if it has moved since the last call,
         //       to avoid breaking glfwWaitEvents with WM_MOUSEMOVE
-        // The re-center is required in order to prevent the mouse cursor stopping at the edges of the screen.
         if (window->win32.lastCursorPosX != width / 2 ||
             window->win32.lastCursorPosY != height / 2)
         {
@@ -2191,7 +2131,7 @@ void _glfwWaitEventsWin32(void)
 
 void _glfwWaitEventsTimeoutWin32(double timeout)
 {
-    MsgWaitForMultipleObjects(0, NULL, FALSE, (DWORD) (timeout * 1e3), QS_ALLINPUT);
+    MsgWaitForMultipleObjects(0, NULL, FALSE, (DWORD) (timeout * 1e3), QS_ALLEVENTS);
 
     _glfwPollEventsWin32();
 }
@@ -2269,17 +2209,14 @@ void _glfwSetCursorModeWin32(_GLFWwindow* window, int mode)
 
 const char* _glfwGetScancodeNameWin32(int scancode)
 {
-    if (scancode < 0 || scancode > (KF_EXTENDED | 0xff))
+    if (scancode < 0 || scancode > (KF_EXTENDED | 0xff) ||
+        _glfw.win32.keycodes[scancode] == GLFW_KEY_UNKNOWN)
     {
         _glfwInputError(GLFW_INVALID_VALUE, "Invalid scancode %i", scancode);
         return NULL;
     }
 
-    const int key = _glfw.win32.keycodes[scancode];
-    if (key == GLFW_KEY_UNKNOWN)
-        return NULL;
-
-    return _glfw.win32.keynames[key];
+    return _glfw.win32.keynames[_glfw.win32.keycodes[scancode]];
 }
 
 int _glfwGetKeyScancodeWin32(int key)
@@ -2366,7 +2303,7 @@ void _glfwSetCursorWin32(_GLFWwindow* window, _GLFWcursor* cursor)
 
 void _glfwSetClipboardStringWin32(const char* string)
 {
-    int characterCount, tries = 0;
+    int characterCount;
     HANDLE object;
     WCHAR* buffer;
 
@@ -2394,20 +2331,12 @@ void _glfwSetClipboardStringWin32(const char* string)
     MultiByteToWideChar(CP_UTF8, 0, string, -1, buffer, characterCount);
     GlobalUnlock(object);
 
-    // NOTE: Retry clipboard opening a few times as some other application may have it
-    //       open and also the Windows Clipboard History reads it after each update
-    while (!OpenClipboard(_glfw.win32.helperWindowHandle))
+    if (!OpenClipboard(_glfw.win32.helperWindowHandle))
     {
-        Sleep(1);
-        tries++;
-
-        if (tries == 3)
-        {
-            _glfwInputErrorWin32(GLFW_PLATFORM_ERROR,
-                                 "Win32: Failed to open clipboard");
-            GlobalFree(object);
-            return;
-        }
+        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR,
+                             "Win32: Failed to open clipboard");
+        GlobalFree(object);
+        return;
     }
 
     EmptyClipboard();
@@ -2419,21 +2348,12 @@ const char* _glfwGetClipboardStringWin32(void)
 {
     HANDLE object;
     WCHAR* buffer;
-    int tries = 0;
 
-    // NOTE: Retry clipboard opening a few times as some other application may have it
-    //       open and also the Windows Clipboard History reads it after each update
-    while (!OpenClipboard(_glfw.win32.helperWindowHandle))
+    if (!OpenClipboard(_glfw.win32.helperWindowHandle))
     {
-        Sleep(1);
-        tries++;
-
-        if (tries == 3)
-        {
-            _glfwInputErrorWin32(GLFW_PLATFORM_ERROR,
-                                 "Win32: Failed to open clipboard");
-            return NULL;
-        }
+        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR,
+                             "Win32: Failed to open clipboard");
+        return NULL;
     }
 
     object = GetClipboardData(CF_UNICODETEXT);
@@ -2589,6 +2509,4 @@ GLFWAPI HWND glfwGetWin32Window(GLFWwindow* handle)
 
     return window->win32.handle;
 }
-
-#endif // _GLFW_WIN32
 

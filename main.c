@@ -1,66 +1,85 @@
-#include <stdbool.h>
-#include "raylib/src/raylib.h"
+#include "./raylib/src/raylib.h"
 #include <stdio.h>
+#include <stdlib.h>
 
-#define G 9.8
+#define CAM_SPEED 500
 
-typedef struct Player {
-    Vector2 position;
-    float speed;
-    float vSpeed;
-    bool canJump;
-}Player;
+typedef struct Ground{
+    int x;
+    int y;
+    int width;
+    int height;
+    int color;
+} Ground;
 
-int main(void) {
-    const int WIDTH = 800;
-    const int HEIGHT = 500;
+int main() {
+    int WIDTH = 800;
+    int HEIGHT = 500;
+    FILE *fpt;
+    fpt = fopen("world_data.txt", "a+");
+    if (fpt == NULL) return 1;
 
-
-    InitWindow(800, 500, "IDK");
-
-    Player p = { 0 };
-    p.position = (Vector2){100, 100};
-    p.speed = 50.0f;
-    p.vSpeed = 100.0f;
-
-    Camera2D camera = { 0 };
-    camera.zoom = 1;
-    camera.rotation = 0;
-
+    InitWindow(WIDTH, HEIGHT, "Level Editor");
     SetTargetFPS(60);
 
-    camera.target = p.position;
+    Vector2 cam_pos = (Vector2) {0, 0};
 
+    Camera2D camera = { 0 };
+    camera.rotation = 0.0f;
+    camera.zoom = 1.0f;
+    camera.offset = (Vector2){ WIDTH/2.0f, HEIGHT/2.0f };
+    camera.target = cam_pos;
+
+    float delta;
     while (!WindowShouldClose()) {
-        float delta = GetFrameTime();
+        delta = GetFrameTime();
 
-        //UPDATE
-        camera.offset = (Vector2){WIDTH/2, HEIGHT/2};
+        camera.offset = (Vector2){ WIDTH/2.0f, HEIGHT/2.0f };
+        camera.target = cam_pos;
 
-        if (IsKeyDown(KEY_A)) p.position.x -= p.speed * delta;
-        else if (IsKeyDown(KEY_D)) p.position.x += p.speed * delta;
-        if (IsKeyPressed(KEY_SPACE) && p.canJump) {
-            p.position.y -= p.speed;
+        int create = 0;
+        if(IsGestureDetected(GESTURE_TAP)) {
+            create = 1;
+            Vector2 mouse_pos = GetMousePosition();
+            printf("%d, %d\n", (int)mouse_pos.x, (int)mouse_pos.y);
         }
 
-        p.vSpeed += G*delta;
-        p.position.y += p.vSpeed*delta;
+        camera.zoom += ((float)GetMouseWheelMove()*0.05f);
 
-        // if (p.position.y >= 400) p.position.y = HEIGHT - 100;
-        if (p.position.y >= 200) 
+        if (camera.zoom > 3.0f) camera.zoom = 3.0f;
+        else if (camera.zoom < 0.25f) camera.zoom = 0.25f;
 
-        //DRAW
+        if(IsKeyDown(KEY_D)) {
+            cam_pos.x += CAM_SPEED * delta;
+        }
+        if(IsKeyDown(KEY_A)) {
+            cam_pos.x -= CAM_SPEED * delta;
+        }
+        if(IsKeyDown(KEY_S)) {
+            cam_pos.y += CAM_SPEED * delta;
+        }
+        if(IsKeyDown(KEY_W)) {
+            cam_pos.y -= CAM_SPEED * delta;
+        }
+
         BeginDrawing();
-        ClearBackground(GRAY);
-        BeginMode2D(camera);
+            BeginMode2D(camera);
+                ClearBackground(GRAY);
+                DrawLine(0, 1000, 0, -1000, RED);
+                DrawLine(1000, 0, -1000, 0, BLUE);
 
-        DrawRectangle(p.position.x, p.position.y, 20, 20, GREEN);
+                DrawCircle(cam_pos.x, cam_pos.y, 5, GREEN);
 
-        EndMode2D();
+
+            EndMode2D();
+
+
+            char st[10];
+            sprintf(st, "camera_pos: (%.2f, %.2f)", cam_pos.x, cam_pos.y);
+            DrawText(st, 0, 0, 24, RED);
+
         EndDrawing();
-        
-
-    
     }
+    CloseWindow();
     return 0;
 }

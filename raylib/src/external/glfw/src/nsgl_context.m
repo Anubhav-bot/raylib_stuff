@@ -23,10 +23,10 @@
 //    distribution.
 //
 //========================================================================
+// It is fine to use C99 in this file because it will not be built with VS
+//========================================================================
 
 #include "internal.h"
-
-#if defined(_GLFW_COCOA)
 
 #include <unistd.h>
 #include <math.h>
@@ -81,10 +81,11 @@ static void swapIntervalNSGL(int interval)
     @autoreleasepool {
 
     _GLFWwindow* window = _glfwPlatformGetTls(&_glfw.contextSlot);
-    assert(window != NULL);
-
-    [window->context.nsgl.object setValues:&interval
-                              forParameter:NSOpenGLContextParameterSwapInterval];
+    if (window)
+    {
+        [window->context.nsgl.object setValues:&interval
+                                  forParameter:NSOpenGLContextParameterSwapInterval];
+    }
 
     } // autoreleasepool
 }
@@ -161,7 +162,7 @@ GLFWbool _glfwCreateContextNSGL(_GLFWwindow* window,
     if (ctxconfig->client == GLFW_OPENGL_ES_API)
     {
         _glfwInputError(GLFW_API_UNAVAILABLE,
-                        "NSGL: OpenGL ES is not available via NSGL");
+                        "NSGL: OpenGL ES is not available on macOS");
         return GLFW_FALSE;
     }
 
@@ -173,13 +174,6 @@ GLFWbool _glfwCreateContextNSGL(_GLFWwindow* window,
                             "NSGL: The targeted version of macOS does not support OpenGL 3.0 or 3.1 but may support 3.2 and above");
             return GLFW_FALSE;
         }
-    }
-
-    if (ctxconfig->major >= 3 && ctxconfig->profile == GLFW_OPENGL_COMPAT_PROFILE)
-    {
-        _glfwInputError(GLFW_VERSION_UNAVAILABLE,
-                        "NSGL: The compatibility profile is not available on macOS");
-        return GLFW_FALSE;
     }
 
     // Context robustness modes (GL_KHR_robustness) are not yet supported by
@@ -340,7 +334,7 @@ GLFWbool _glfwCreateContextNSGL(_GLFWwindow* window,
                                   forParameter:NSOpenGLContextParameterSurfaceOpacity];
     }
 
-    [window->ns.view setWantsBestResolutionOpenGLSurface:window->ns.scaleFramebuffer];
+    [window->ns.view setWantsBestResolutionOpenGLSurface:window->ns.retina];
 
     [window->context.nsgl.object setView:window->ns.view];
 
@@ -379,6 +373,4 @@ GLFWAPI id glfwGetNSGLContext(GLFWwindow* handle)
 
     return window->context.nsgl.object;
 }
-
-#endif // _GLFW_COCOA
 

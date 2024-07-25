@@ -1,9 +1,8 @@
 //========================================================================
-// GLFW 3.4 X11 (modified for raylib) - www.glfw.org; www.raylib.com
+// GLFW 3.4 X11 - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2002-2006 Marcus Geelnard
 // Copyright (c) 2006-2019 Camilla Löwy <elmindreda@glfw.org>
-// Copyright (c) 2024 M374LX <wilsalx@gmail.com>
 //
 // This software is provided 'as-is', without any express or implied
 // warranty. In no event will the authors be held liable for any damages
@@ -25,10 +24,10 @@
 //    distribution.
 //
 //========================================================================
+// It is fine to use C99 in this file because it will not be built with VS
+//========================================================================
 
 #include "internal.h"
-
-#if defined(_GLFW_X11)
 
 #include <X11/cursorfont.h>
 #include <X11/Xmd.h>
@@ -80,25 +79,24 @@ static GLFWbool waitForX11Event(double* timeout)
 //
 static GLFWbool waitForAnyEvent(double* timeout)
 {
-    enum { XLIB_FD, PIPE_FD, INOTIFY_FD };
-    struct pollfd fds[] =
+    nfds_t count = 2;
+    struct pollfd fds[3] =
     {
-        [XLIB_FD] = { ConnectionNumber(_glfw.x11.display), POLLIN },
-        [PIPE_FD] = { _glfw.x11.emptyEventPipe[0], POLLIN },
-        [INOTIFY_FD] = { -1, POLLIN }
+        { ConnectionNumber(_glfw.x11.display), POLLIN },
+        { _glfw.x11.emptyEventPipe[0], POLLIN }
     };
 
-#if defined(GLFW_BUILD_LINUX_JOYSTICK)
+#if defined(__linux__)
     if (_glfw.joysticksInitialized)
-        fds[INOTIFY_FD].fd = _glfw.linjs.inotify;
+        fds[count++] = (struct pollfd) { _glfw.linjs.inotify, POLLIN };
 #endif
 
     while (!XPending(_glfw.x11.display))
     {
-        if (!_glfwPollPOSIX(fds, sizeof(fds) / sizeof(fds[0]), timeout))
+        if (!_glfwPollPOSIX(fds, count, timeout))
             return GLFW_FALSE;
 
-        for (int i = 1; i < sizeof(fds) / sizeof(fds[0]); i++)
+        for (int i = 1; i < count; i++)
         {
             if (fds[i].revents & POLLIN)
                 return GLFW_TRUE;
@@ -236,9 +234,9 @@ static int translateState(int state)
 
 // Translates an X11 key code to a GLFW key token
 //
-static int translateKeyX11(int scancode)
+static int translateKey(int scancode)
 {
-    // Use the pre-filled LUT (see createKeyTablesX11() in x11_init.c)
+    // Use the pre-filled LUT (see createKeyTables() in x11_init.c)
     if (scancode < 0 || scancode > 255)
         return GLFW_KEY_UNKNOWN;
 
@@ -1082,7 +1080,7 @@ static const char* getSelectionString(Atom selection)
 
 // Make the specified window and its video mode active on its monitor
 //
-static void acquireMonitorX11(_GLFWwindow* window)
+static void acquireMonitor(_GLFWwindow* window)
 {
     if (_glfw.x11.saver.count == 0)
     {
@@ -1121,7 +1119,7 @@ static void acquireMonitorX11(_GLFWwindow* window)
 
 // Remove the window and restore the original video mode
 //
-static void releaseMonitorX11(_GLFWwindow* window)
+static void releaseMonitor(_GLFWwindow* window)
 {
     if (window->monitor->window != window)
         return;
@@ -1243,7 +1241,7 @@ static void processEvent(XEvent *event)
 
         case KeyPress:
         {
-            const int key = translateKeyX11(keycode);
+            const int key = translateKey(keycode);
             const int mods = translateState(event->xkey.state);
             const int plain = !(mods & (GLFW_MOD_CONTROL | GLFW_MOD_ALT));
 
@@ -1315,7 +1313,7 @@ static void processEvent(XEvent *event)
 
         case KeyRelease:
         {
-            const int key = translateKeyX11(keycode);
+            const int key = translateKey(keycode);
             const int mods = translateState(event->xkey.state);
 
             if (!_glfw.x11.xkb.detectable)
@@ -1489,9 +1487,6 @@ static void processEvent(XEvent *event)
             if (event->xconfigure.width != window->x11.width ||
                 event->xconfigure.height != window->x11.height)
             {
-                window->x11.width = event->xconfigure.width;
-                window->x11.height = event->xconfigure.height;
-
                 _glfwInputFramebufferSize(window,
                                           event->xconfigure.width,
                                           event->xconfigure.height);
@@ -1499,6 +1494,9 @@ static void processEvent(XEvent *event)
                 _glfwInputWindowSize(window,
                                      event->xconfigure.width,
                                      event->xconfigure.height);
+
+                window->x11.width = event->xconfigure.width;
+                window->x11.height = event->xconfigure.height;
             }
 
             int xpos = event->xconfigure.x;
@@ -1526,10 +1524,9 @@ static void processEvent(XEvent *event)
 
             if (xpos != window->x11.xpos || ypos != window->x11.ypos)
             {
+                _glfwInputWindowPos(window, xpos, ypos);
                 window->x11.xpos = xpos;
                 window->x11.ypos = ypos;
-
-                _glfwInputWindowPos(window, xpos, ypos);
             }
 
             return;
@@ -1807,9 +1804,9 @@ static void processEvent(XEvent *event)
                     if (window->monitor)
                     {
                         if (iconified)
-                            releaseMonitorX11(window);
+                            releaseMonitor(window);
                         else
-                            acquireMonitorX11(window);
+                            acquireMonitor(window);
                     }
 
                     window->x11.iconified = iconified;
@@ -2026,7 +2023,7 @@ GLFWbool _glfwCreateWindowX11(_GLFWwindow* window,
     {
         _glfwShowWindowX11(window);
         updateWindowMode(window);
-        acquireMonitorX11(window);
+        acquireMonitor(window);
 
         if (wndconfig->centerCursor)
             _glfwCenterCursorInContentArea(window);
@@ -2051,7 +2048,7 @@ void _glfwDestroyWindowX11(_GLFWwindow* window)
         enableCursor(window);
 
     if (window->monitor)
-        releaseMonitorX11(window);
+        releaseMonitor(window);
 
     if (window->x11.ic)
     {
@@ -2207,7 +2204,7 @@ void _glfwSetWindowSizeX11(_GLFWwindow* window, int width, int height)
     if (window->monitor)
     {
         if (window->monitor->window == window)
-            acquireMonitorX11(window);
+            acquireMonitor(window);
     }
     else
     {
@@ -2478,7 +2475,7 @@ void _glfwSetWindowMonitorX11(_GLFWwindow* window,
         if (monitor)
         {
             if (monitor->window == window)
-                acquireMonitorX11(window);
+                acquireMonitor(window);
         }
         else
         {
@@ -2497,7 +2494,7 @@ void _glfwSetWindowMonitorX11(_GLFWwindow* window,
     {
         _glfwSetWindowDecoratedX11(window, window->decorated);
         _glfwSetWindowFloatingX11(window, window->floating);
-        releaseMonitorX11(window);
+        releaseMonitor(window);
     }
 
     _glfwInputWindowMonitor(window, monitor);
@@ -2512,7 +2509,7 @@ void _glfwSetWindowMonitorX11(_GLFWwindow* window,
         }
 
         updateWindowMode(window);
-        acquireMonitorX11(window);
+        acquireMonitor(window);
     }
     else
     {
@@ -2784,7 +2781,7 @@ void _glfwPollEventsX11(void)
 {
     drainEmptyEvents();
 
-#if defined(GLFW_BUILD_LINUX_JOYSTICK)
+#if defined(__linux__)
     if (_glfw.joysticksInitialized)
         _glfwDetectJoystickConnectionLinux();
 #endif
@@ -2904,16 +2901,14 @@ const char* _glfwGetScancodeNameX11(int scancode)
     if (!_glfw.x11.xkb.available)
         return NULL;
 
-    if (scancode < 0 || scancode > 0xff)
+    if (scancode < 0 || scancode > 0xff ||
+        _glfw.x11.keycodes[scancode] == GLFW_KEY_UNKNOWN)
     {
         _glfwInputError(GLFW_INVALID_VALUE, "Invalid scancode %i", scancode);
         return NULL;
     }
 
     const int key = _glfw.x11.keycodes[scancode];
-    if (key == GLFW_KEY_UNKNOWN)
-        return NULL;
-
     const KeySym keysym = XkbKeycodeToKeysym(_glfw.x11.display,
                                              scancode, _glfw.x11.xkb.group, 0);
     if (keysym == NoSymbol)
@@ -3353,6 +3348,4 @@ GLFWAPI const char* glfwGetX11SelectionString(void)
 
     return getSelectionString(_glfw.x11.PRIMARY);
 }
-
-#endif // _GLFW_X11
 

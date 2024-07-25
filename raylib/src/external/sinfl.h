@@ -171,7 +171,7 @@ extern int zsinflate(void *out, int cap, const void *in, int size);
 
 static int
 sinfl_bsr(unsigned n) {
-#if defined(_MSC_VER) && !defined(__clang__)
+#ifdef _MSC_VER
   _BitScanReverse(&n, n);
   return n;
 #elif defined(__GNUC__) || defined(__clang__)
@@ -231,13 +231,13 @@ sinfl_refill(struct sinfl *s) {
 }
 static int
 sinfl_peek(struct sinfl *s, int cnt) {
-  //assert(cnt >= 0 && cnt <= 56);          // @raysan5: commented to avoid crash on decompression
-  //assert(cnt <= s->bitcnt);
+  assert(cnt >= 0 && cnt <= 56);
+  assert(cnt <= s->bitcnt);
   return s->bitbuf & ((1ull << cnt) - 1);
 }
 static void
 sinfl_eat(struct sinfl *s, int cnt) {
-  //assert(cnt <= s->bitcnt);               // @raysan5: commented
+  assert(cnt <= s->bitcnt);
   s->bitbuf >>= cnt;
   s->bitcnt -= cnt;
 }
