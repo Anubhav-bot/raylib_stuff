@@ -1,84 +1,117 @@
-#include "./raylib/src/raylib.h"
+#include "raylib.h"
+#include "raylib/src/raylib.h"
 #include <stdio.h>
 #include <stdlib.h>
 
-#define CAM_SPEED 500
+#define WIDTH 800
+#define HEIGHT 500
 
-typedef struct Ground{
+#define GRAVITY 500
+
+#define PLAYER_SPEED 100
+#define PLAYER_JMP_SPEED 350
+
+struct Player {
+    float x;
+    float y;
+    float width;
+    float height;
+    float vSpeed;
+    bool canJump;
+};
+
+typedef struct Ground {
     int x;
     int y;
     int width;
     int height;
-    int color;
 } Ground;
 
 int main() {
-    int WIDTH = 800;
-    int HEIGHT = 500;
     FILE *fpt;
-    fpt = fopen("world_data.txt", "a+");
-    if (fpt == NULL) return 1;
+    Ground g[10];
+    fpt = fopen("world_data.txt", "r");
+    for(int i = 0; i < 10; i++)
+    {
+        fscanf(fpt, "%d %d %d %d", &g[i].x, &g[i].y, &g[i].width, &g[i].height);
+    }
+    fclose(fpt);
 
-    InitWindow(WIDTH, HEIGHT, "Level Editor");
-    SetTargetFPS(60);
+    InitWindow(WIDTH, HEIGHT, "THIS TIME FOR SURE");
 
-    Vector2 cam_pos = (Vector2) {0, 0};
-
+    struct Player p = {0, -90, 30, 30, 0, 0};
     Camera2D camera = { 0 };
-    camera.rotation = 0.0f;
     camera.zoom = 1.0f;
-    camera.offset = (Vector2){ WIDTH/2.0f, HEIGHT/2.0f };
-    camera.target = cam_pos;
+    camera.rotation = 0.0f;
+    camera.target = (Vector2){p.x, p.y};
+    camera.offset = (Vector2){WIDTH / 2.0f, HEIGHT / 2.0f};
 
     float delta;
+    SetTargetFPS(60);
+
     while (!WindowShouldClose()) {
         delta = GetFrameTime();
 
-        camera.offset = (Vector2){ WIDTH/2.0f, HEIGHT/2.0f };
-        camera.target = cam_pos;
-
-        int create = 0;
-        if(IsGestureDetected(GESTURE_TAP)) {
-            create = 1;
-            Vector2 mouse_pos = GetMousePosition();
-            printf("%d, %d\n", (int)mouse_pos.x, (int)mouse_pos.y);
-        }
+        camera.target = (Vector2){p.x, p.y};
+        camera.offset = (Vector2){WIDTH / 2.0f, HEIGHT / 2.0f};
 
         camera.zoom += ((float)GetMouseWheelMove()*0.05f);
-
         if (camera.zoom > 3.0f) camera.zoom = 3.0f;
         else if (camera.zoom < 0.25f) camera.zoom = 0.25f;
 
-        if(IsKeyDown(KEY_D)) {
-            cam_pos.x += CAM_SPEED * delta;
+        if(IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) {
+            p.x += PLAYER_SPEED * delta;
         }
-        if(IsKeyDown(KEY_A)) {
-            cam_pos.x -= CAM_SPEED * delta;
+
+        if(IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) {
+            p.x -= PLAYER_SPEED * delta;
         }
-        if(IsKeyDown(KEY_S)) {
-            cam_pos.y += CAM_SPEED * delta;
+
+        if(IsKeyDown(KEY_SPACE) && p.canJump) {
+            p.vSpeed = -PLAYER_JMP_SPEED;
+            p.canJump = false;
         }
-        if(IsKeyDown(KEY_W)) {
-            cam_pos.y -= CAM_SPEED * delta;
+        
+        bool isColliding = false;
+        for(int i = 0; i < 10; i++) {
+            if(CheckCollisionRecs((Rectangle){p.x, p.y, p.width, p.height}, (Rectangle){g[i].x, g[i].y, g[i].width, g[i].height}))
+            {
+                isColliding = true;
+                p.vSpeed = 0;
+                p.y = g[i].y - p.height;
+            }
+        }
+
+        if(!isColliding) {
+            p.vSpeed += GRAVITY * delta;
+            p.y += p.vSpeed * delta;
+            p.canJump = false;
+        }
+        else {
+            p.canJump = true;
         }
 
         BeginDrawing();
+
             BeginMode2D(camera);
-                ClearBackground(GRAY);
+                ClearBackground(DARKGRAY);
+
+                for(int i = 0; i < 10; i++) {
+                    DrawRectangle(g[i].x, g[i].y, g[i].width, g[i].height, SKYBLUE);
+                }
+
+                
                 DrawLine(0, 1000, 0, -1000, RED);
                 DrawLine(1000, 0, -1000, 0, BLUE);
 
-                DrawCircle(cam_pos.x, cam_pos.y, 5, GREEN);
-
-
+                DrawRectangle(p.x, p.y, p.width, p.height, GREEN);
             EndMode2D();
 
+            DrawFPS(WIDTH - 100, 10);
 
-            char st[10];
-            sprintf(st, "camera_pos: (%.2f, %.2f)", cam_pos.x, cam_pos.y);
-            DrawText(st, 0, 0, 24, RED);
 
         EndDrawing();
+
     }
     CloseWindow();
     return 0;
