@@ -46,6 +46,8 @@ int main() {
     camera.target = (Vector2){p.x, p.y};
     camera.offset = (Vector2){WIDTH / 2.0f, HEIGHT / 2.0f};
 
+    Texture2D bg = LoadTexture("bg.png");
+
     float delta;
     SetTargetFPS(60);
 
@@ -92,14 +94,13 @@ int main() {
         }
 
         BeginDrawing();
-
+            DrawTexture(bg, 0, 0, GRAY);
+        
             BeginMode2D(camera);
-                ClearBackground(DARKGRAY);
 
                 for(int i = 0; i < 10; i++) {
                     DrawRectangle(g[i].x, g[i].y, g[i].width, g[i].height, SKYBLUE);
                 }
-
                 
                 DrawLine(0, 1000, 0, -1000, RED);
                 DrawLine(1000, 0, -1000, 0, BLUE);
@@ -113,6 +114,8 @@ int main() {
         EndDrawing();
 
     }
+
+    UnloadTexture(bg);
     CloseWindow();
     return 0;
 }
