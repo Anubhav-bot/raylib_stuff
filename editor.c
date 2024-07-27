@@ -4,8 +4,8 @@
 #include <math.h>
 
 #define CAM_SPEED 500
-#define WIDTH 800
-#define HEIGHT 500
+#define WIDTH_INITIAL 800
+#define HEIGHT_INITIAL 500
 
 typedef struct Ground{
     int x;
@@ -17,7 +17,10 @@ typedef struct Ground{
 int main() {
     FILE *fpt;
 
-    InitWindow(WIDTH, HEIGHT, "Level Editor");
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE); 
+    InitWindow(WIDTH_INITIAL, HEIGHT_INITIAL, "Level Editor");
+    int WIDTH = GetScreenWidth();
+    int HEIGHT = GetScreenHeight();
     SetTargetFPS(60);
 
     Vector2 cam_pos = (Vector2) {0, 0};
@@ -75,13 +78,19 @@ int main() {
 
 
         //Reading data
-        Rectangle r[10];
-
         fpt = fopen("world_data.txt", "a+");
         if (fpt == NULL) return 1;
 
-        for(int i = 0; i < 10; i++) {
-            fscanf(fpt, "%f %f %f %f", &r[i].x, &r[i].y, &r[i].width, &r[i].height); //TODO
+        int obstacle_counter = 0;
+        while(fscanf(fpt, "%*d %*d %*d %*d") != EOF){
+            obstacle_counter++;
+        }
+        rewind(fpt);
+
+        Rectangle r[obstacle_counter];
+
+        for(int i = 0; i < obstacle_counter; i++) {
+            fscanf(fpt, "%f %f %f %f", &r[i].x, &r[i].y, &r[i].width, &r[i].height);
         }
 
         fclose(fpt);
@@ -95,7 +104,7 @@ int main() {
 
                 DrawCircle(cam_pos.x, cam_pos.y, 5, GREEN);
 
-                for (int i = 0; i < 10; i++) {
+                for (int i = 0; i < obstacle_counter; i++) {
                     DrawRectangleRec(r[i], SKYBLUE);
                 }
         
