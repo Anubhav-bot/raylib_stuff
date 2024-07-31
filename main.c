@@ -1,5 +1,4 @@
 #include "raylib.h"
-#include "raylib/src/raylib.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -11,14 +10,14 @@
 #define PLAYER_SPEED 200.0f
 #define PLAYER_JMP_SPEED 350.0f
 
-struct Player {
+typedef struct Player {
     float x;
     float y;
     float width;
     float height;
     float vSpeed;
     bool canJump;
-};
+}Player;
 
 typedef struct Ground {
     int x;
@@ -27,12 +26,25 @@ typedef struct Ground {
     int height;
 } Ground;
 
-void debug(int obstacle_counter) {
+void debug(int obstacle_counter, bool isColliding, Player *p) {
     char text[100];
+    int index = 0;
+    int size = 24;
+    int x_pos = 10;
+
     DrawFPS(GetScreenWidth() - 100, 10);
 
     sprintf(text, "Obs: %d\n", obstacle_counter);
-    DrawText(text, 10, 10, 24, RED);
+    DrawText(text, x_pos, index++ * size, size, RED);
+
+    if(isColliding) DrawText("Collision: True", x_pos, index++ * size, size, RED);
+    else DrawText("Collision: False", x_pos, index++ * size, size, RED);
+
+    sprintf(text, "Pos: (%d, %d)\n", (int)p->x, (int)p->y);
+    DrawText(text, x_pos, index++ * size, size, RED);
+
+    sprintf(text, "vSpeed: %.2f\n", p->vSpeed);
+    DrawText(text, x_pos, index++ * size, size, RED);
 }
 
 int main() {
@@ -59,7 +71,7 @@ int main() {
     int WIDTH = GetScreenWidth();
     int HEIGHT = GetScreenHeight();
 
-    struct Player p = {0, -90, 30, 30, 0, 0};
+    Player p = {0, -90, 30, 30, 0, 0};
     Camera2D camera = { 0 };
     camera.zoom = 1.0f;
     camera.rotation = 0.0f;
@@ -103,6 +115,10 @@ int main() {
             p.x -= PLAYER_SPEED * delta;
         }
 
+        if(IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) {
+            p.vSpeed += 10;
+        }
+
         if(IsKeyDown(KEY_SPACE) && p.canJump) {
             p.vSpeed = -PLAYER_JMP_SPEED;
             p.canJump = false;
@@ -112,6 +128,7 @@ int main() {
             p.x = 0;
             p.y = -90;
             p.vSpeed = 0;
+            camera.zoom = 1.0f;
         }
 
         if(IsKeyPressed(KEY_GRAVE)) {
@@ -121,21 +138,25 @@ int main() {
         
         bool isColliding = false;
         for(int i = 0; i < obstacle_counter; i++) {
-            if(CheckCollisionRecs((Rectangle){p.x, p.y, p.width, p.height}, (Rectangle){g[i].x, g[i].y, g[i].width, g[i].height}))
+            Ground *gi = g + i;
+            if(
+                gi->x <= p.x + p.width &&
+                gi->x + gi->width >= p.x &&
+                gi->y >= p.y + p.height&&
+                gi->y <= p.y + p.height + p.vSpeed*delta
+            )
             {
                 isColliding = true;
-                p.vSpeed = 0;
+                p.vSpeed = 0.0f;
                 p.y = g[i].y - p.height;
             }
         }
 
         if(!isColliding) {
-            p.vSpeed += GRAVITY * delta;
             p.y += p.vSpeed * delta;
+            p.vSpeed += GRAVITY * delta;
             p.canJump = false;
-        }
-
-        else {
+        } else {
             p.canJump = true;
         }
 
@@ -147,8 +168,7 @@ int main() {
         else if (camera.zoom < 0.25f) camera.zoom = 0.25f;
 
         BeginDrawing();
-            // DrawTexture(bg, 0, 0, GRAY);
-            ClearBackground(DARKGRAY);
+            DrawTexture(bg, 0, 0, GRAY);
         
             BeginMode2D(camera);
 
@@ -159,11 +179,12 @@ int main() {
                 DrawLine(0, 1000, 0, -1000, RED);
                 DrawLine(1000, 0, -1000, 0, BLUE);
 
-                DrawRectangle(p.x, p.y, p.width, p.height, GREEN);
+                Rectangle playerRect = {p.x, p.y, p.width, p.height};
+                DrawRectangleRec(playerRect, GREEN);
             EndMode2D();
 
-            if(enableDebug) debug(obstacle_counter);
-
+            if(enableDebug) debug(obstacle_counter, isColliding, &p);
+            
 
         EndDrawing();
 
