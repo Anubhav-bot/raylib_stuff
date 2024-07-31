@@ -89,7 +89,7 @@ int main() {
         delta = GetFrameTime();
 
 
-        //DEV (DYNAMIC LOADING NOT REQUIRED FOR FINAL PRODUCT) okay to remove
+        //DEV (DYNAMIC LOADING NOT REQUIRED FOR FINAL VERSION) okay to remove
         // make sure to uncomment the static block above
             fpt = fopen("world_data.txt", "r");
             int obstacle_counter = 0;

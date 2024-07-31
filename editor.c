@@ -47,7 +47,7 @@ int main() {
             mouse_pos.x = (int)cam_pos.x + (int)mouse_pos.x - WIDTH / 2; //TOP LEFT POSITION FOR GROUND ENTITY
             mouse_pos.y = (int)cam_pos.y + (int)mouse_pos.y - HEIGHT / 2; //BUT ONLY THE CENTER POSITION IS SAVED TO FILE
 
-            Ground g = {(int)mouse_pos.x, (int)mouse_pos.y, 100, 30};
+            Ground g = {(int)mouse_pos.x, (int)mouse_pos.y, 100, 10};
             printf("(%d, %d)\n", (int)mouse_pos.x, (int)mouse_pos.y);
 
             fpt = fopen("world_data.txt", "a");
