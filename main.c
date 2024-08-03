@@ -1,4 +1,4 @@
-#include "raylib.h"
+#include "./raylib/src/raylib.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -26,31 +26,14 @@ typedef struct Ground {
     int height;
 } Ground;
 
-void debug(int obstacle_counter, bool isColliding, Player *p) {
-    char text[100];
-    int index = 0;
-    int size = 24;
-    int x_pos = 10;
 
-    DrawFPS(GetScreenWidth() - 100, 10);
-
-    sprintf(text, "Obs: %d\n", obstacle_counter);
-    DrawText(text, x_pos, index++ * size, size, RED);
-
-    if(isColliding) DrawText("Collision: True", x_pos, index++ * size, size, RED);
-    else DrawText("Collision: False", x_pos, index++ * size, size, RED);
-
-    sprintf(text, "Pos: (%d, %d)\n", (int)p->x, (int)p->y);
-    DrawText(text, x_pos, index++ * size, size, RED);
-
-    sprintf(text, "vSpeed: %.2f\n", p->vSpeed);
-    DrawText(text, x_pos, index++ * size, size, RED);
-}
+void debug(int obstacle_counter, Player *p);
+void UpdatePlayer(Player *p, Ground g[], int obstacle_counter, float delta);
 
 int main() {
     FILE *fpt;
 
-//UNCOMMENT TO MAKE STATIC
+//UNCOMMENT TO MAKE STATIC/*{{{*/
     // fpt = fopen("world_data.txt", "r");
     // int obstacle_counter = 0;
     // while(fscanf(fpt, "%*d %*d %*d %*d") != EOF){
@@ -65,7 +48,8 @@ int main() {
     //     fscanf(fpt, "%d %d %d %d", &g[i].x, &g[i].y, &g[i].width, &g[i].height);
     // }
     // fclose(fpt);
-    
+/*}}}*/
+
     SetConfigFlags(FLAG_WINDOW_RESIZABLE); 
     InitWindow(WIDTH_INITIAL, HEIGHT_INITIAL, "THIS TIME FOR SURE");
     int WIDTH = GetScreenWidth();
@@ -80,50 +64,36 @@ int main() {
 
     Texture2D bg = LoadTexture("bg.png");
 
-    float delta;
     SetTargetFPS(60);
 
     bool enableDebug = true;
 
     while (!WindowShouldClose()) {
-        delta = GetFrameTime();
-
+        float delta = GetFrameTime();
 
         //DEV (DYNAMIC LOADING NOT REQUIRED FOR FINAL VERSION) okay to remove
         // make sure to uncomment the static block above
-            fpt = fopen("world_data.txt", "r");
-            int obstacle_counter = 0;
-            while(fscanf(fpt, "%*d %*d %*d %*d") != EOF){
-                obstacle_counter++;
-            }
-
-            Ground g[obstacle_counter];
-            rewind(fpt);
-
-            
-            for(int i = 0; i < obstacle_counter; i++) {
-                fscanf(fpt, "%d %d %d %d", &g[i].x, &g[i].y, &g[i].width, &g[i].height);
-            }
-            fclose(fpt);
-         //
-
-        if(IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) {
-            p.x += PLAYER_SPEED * delta;
+        fpt = fopen("world_data.txt", "r");
+        int obstacle_counter = 0;
+        while(fscanf(fpt, "%*d %*d %*d %*d") != EOF){
+            obstacle_counter++;
         }
 
-        if(IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) {
-            p.x -= PLAYER_SPEED * delta;
-        }
+        Ground g[obstacle_counter];
+        rewind(fpt);
 
-        if(IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) {
-            p.vSpeed += 10;
-        }
 
-        if(IsKeyDown(KEY_SPACE) && p.canJump) {
-            p.vSpeed = -PLAYER_JMP_SPEED;
-            p.canJump = false;
+        for(int i = 0; i < obstacle_counter; i++) {
+            fscanf(fpt, "%d %d %d %d", &g[i].x, &g[i].y, &g[i].width, &g[i].height);
         }
+        fclose(fpt);
+        //
 
+
+        if(IsKeyPressed(KEY_GRAVE)) {
+            enableDebug = !enableDebug;
+        }
+        
         if(IsKeyPressed(KEY_R)) {
             p.x = 0;
             p.y = -90;
@@ -131,61 +101,32 @@ int main() {
             camera.zoom = 1.0f;
         }
 
-        if(IsKeyPressed(KEY_GRAVE)) {
-            enableDebug = !enableDebug;
-        }
+        UpdatePlayer(&p, g, obstacle_counter, delta);
 
-        
-        bool isColliding = false;
-        for(int i = 0; i < obstacle_counter; i++) {
-            Ground *gi = g + i;
-            if(
-                gi->x <= p.x + p.width &&
-                gi->x + gi->width >= p.x &&
-                gi->y >= p.y + p.height&&
-                gi->y <= p.y + p.height + p.vSpeed*delta
-            )
-            {
-                isColliding = true;
-                p.vSpeed = 0.0f;
-                p.y = g[i].y - p.height;
-            }
-        }
-
-        if(!isColliding) {
-            p.y += p.vSpeed * delta;
-            p.vSpeed += GRAVITY * delta;
-            p.canJump = false;
-        } else {
-            p.canJump = true;
-        }
 
         camera.target = (Vector2){p.x, p.y};
-        camera.offset = (Vector2){WIDTH / 2.0f, HEIGHT / 2.0f};
+        camera.offset = (Vector2){GetScreenWidth() / 2.0f, GetScreenHeight() / 2.0f};
 
         camera.zoom += ((float)GetMouseWheelMove()*0.05f);
         if (camera.zoom > 3.0f) camera.zoom = 3.0f;
         else if (camera.zoom < 0.25f) camera.zoom = 0.25f;
 
         BeginDrawing();
-            DrawTexture(bg, 0, 0, GRAY);
-        
-            BeginMode2D(camera);
+        DrawTexture(bg, 0, 0, GOLD);
+        BeginMode2D(camera);
 
-                for(int i = 0; i < obstacle_counter; i++) {
-                    DrawRectangle(g[i].x, g[i].y, g[i].width, g[i].height, SKYBLUE);
-                }
-                
-                DrawLine(0, 1000, 0, -1000, RED);
-                DrawLine(1000, 0, -1000, 0, BLUE);
+        for(int i = 0; i < obstacle_counter; i++) {
+            DrawRectangle(g[i].x, g[i].y, g[i].width, g[i].height, SKYBLUE);
+        }
 
-                Rectangle playerRect = {p.x, p.y, p.width, p.height};
-                DrawRectangleRec(playerRect, GREEN);
-            EndMode2D();
+        DrawLine(0, 1000, 0, -1000, RED);
+        DrawLine(1000, 0, -1000, 0, BLUE);
 
-            if(enableDebug) debug(obstacle_counter, isColliding, &p);
-            
+        Rectangle playerRect = {p.x, p.y, p.width, p.height};
+        DrawRectangleRec(playerRect, GREEN);
 
+        EndMode2D();
+        if(enableDebug) debug(obstacle_counter, &p);
         EndDrawing();
 
     }
@@ -193,4 +134,77 @@ int main() {
     UnloadTexture(bg);
     CloseWindow();
     return 0;
+}
+
+void debug(int obstacle_counter, Player *p) {/*{{{*/
+    char text[100];
+    int index = 0;
+    int size = 24;
+    int x_pos = 10;
+
+    DrawFPS(GetScreenWidth() - 100, 10);
+
+    sprintf(text, "Obs: %d\n", obstacle_counter);
+    DrawText(text, x_pos, index++ * size, size, RED);
+    // DrawText(TextFormat("Obs: %d\n", obstacle_counter), x_pos, index++ * size, size, RED);
+
+    // if(isColliding) DrawText("Collision: True", x_pos, index++ * size, size, RED);
+    // else DrawText("Collision: False", x_pos, index++ * size, size, RED);
+
+    sprintf(text, "Pos: (%d, %d)\n", (int)p->x, (int)p->y);
+    DrawText(text, x_pos, index++ * size, size, RED);
+
+    sprintf(text, "vSpeed: %.2f\n", p->vSpeed);
+    DrawText(text, x_pos, index++ * size, size, RED);
+}/*}}}*/
+
+void UpdatePlayer(Player *p, Ground g[], int obstacle_counter, float delta) {
+        if(IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) {
+            p->x += PLAYER_SPEED * delta;
+        }
+
+        if(IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) {
+            p->x -= PLAYER_SPEED * delta;
+        }
+
+        if(IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) {
+            p->vSpeed += 10;
+        }
+
+        if(IsKeyDown(KEY_SPACE) && p->canJump) {
+            p->vSpeed = -PLAYER_JMP_SPEED;
+            p->canJump = false;
+        }
+
+        //DEV
+        if(IsKeyDown(KEY_J)) {
+            if(IsKeyDown(KEY_S)) p->vSpeed = -PLAYER_JMP_SPEED * 2;
+            else p->vSpeed = -PLAYER_JMP_SPEED * 5;
+            p->canJump = false;
+        }
+        //
+
+        bool isColliding = false;
+        for(int i = 0; i < obstacle_counter; i++) {
+            Ground *gi = g + i;
+            if(
+                gi->x <= p->x + p->width &&
+                gi->x + gi->width >= p->x &&
+                gi->y >= p->y + p->height&&
+                gi->y <= p->y + p->height + p->vSpeed*delta
+            )
+            {
+                isColliding = true;
+                p->vSpeed = 0.0f;
+                p->y = g[i].y - p->height;
+            }
+        }
+
+        if(!isColliding) {
+            p->y += p->vSpeed * delta;
+            p->vSpeed += GRAVITY * delta;
+            p->canJump = false;
+        } else {
+            p->canJump = true;
+        }
 }
